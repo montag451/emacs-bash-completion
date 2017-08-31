@@ -1,4 +1,4 @@
-;;; bash-completion.el --- BASH completion for the shell buffer
+;;; bash-completion.el --- BASH completion for the shell buffer -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2009 Stephane Zermatten
 
@@ -359,8 +359,10 @@ Returns (list stub-start stub-end completions) with
 	   (stub-start (cdr (assq 'stub-start parsed)))
 	   (stub (nth cword words))
            (unparsed-stub (buffer-substring-no-properties stub-start comp-pos))
-	   (completions (bash-completion-comm line point words cword open-quote
-                                              unparsed-stub)))
+	   (completions (completion-table-with-cache
+                         (lambda (_)
+                           (bash-completion-comm line point words cword open-quote
+                                                 unparsed-stub)))))
       (if completions
 	  (list stub-start comp-pos completions)
 	;; fallback to default (file) completion after a wordbreak
@@ -395,9 +397,11 @@ This function is not meant to be called outside of
     (when (> (length before-wordbreak) 0)
       (list (+ stub-start after-wordbreak-in-unparsed-pos)
             pos
-            (bash-completion--default-completion
-             after-wordbreak unparsed-after-wordbreak
-             open-quote 'wordbreak)))))
+            (completion-table-with-cache
+             (lambda (_)
+               (bash-completion--default-completion
+                after-wordbreak unparsed-after-wordbreak
+                open-quote 'wordbreak)))))))
 
 (defun bash-completion--find-last (elt array)
   "Return the position of the last intance of ELT in array or nil."
@@ -422,7 +426,7 @@ passed, eventually, to `bash-completion-fix'"
     (bash-completion-extract-candidates
      stub unparsed-stub open-quote
      (or completion-type 'default))))
-	  
+
 ;;; ---------- Functions: parsing and tokenizing
 
 (defun bash-completion-join (words)
