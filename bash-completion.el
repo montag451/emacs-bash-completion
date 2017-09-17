@@ -712,12 +712,14 @@ The result is a list of candidates, which might be empty."
   ;; start process now, to make sure bash-completion-alist is
   ;; set before we run bash-completion-generate-line
   
-  (let ((process (bash-completion-require-process))
-        (cmdline)
-        (candidates)
-        (completion-status))
+  (let* ((entry (bash-completion-require-process))
+         (process (car entry))
+         (bash-completion-alist (cdr entry))
+         (cmdline)
+         (candidates)
+         (completion-status))
     (setq cmdline (bash-completion-generate-line line pos words cword t))
-    (setq completion-status (bash-completion-send (cdr cmdline)))
+    (setq completion-status (bash-completion-send (cdr cmdline) process))
     (when (eq 124 completion-status)
       ;; Special 'retry-completion' exit status, typically returned by
       ;; functions bound by complete -D. Presumably, the function has
@@ -725,8 +727,9 @@ The result is a list of candidates, which might be empty."
       ;; us to retry once with the new configuration. 
       (bash-completion-send "complete -p" process)
       (bash-completion-build-alist (process-buffer process))
+      (setcdr entry bash-completion-alist)
       (setq cmdline (bash-completion-generate-line line pos words cword nil))
-      (setq completion-status (bash-completion-send (cdr cmdline))))
+      (setq completion-status (bash-completion-send (cdr cmdline)) process))
     (setq candidates
           (when (eq 0 completion-status)
             (bash-completion-extract-candidates
@@ -1000,7 +1003,16 @@ is set to t."
                 (when remote
                   ;; See http://lists.gnu.org/archive/html/tramp-devel/2016-05/msg00004.html
                   (get-buffer-create buffer-name))
-                (setq process (apply start-proc-fun args)))
+                (let ((non-essential (if remote nil non-essential)))
+                  ;; Set `non-essential' to nil when spawning a remote
+                  ;; shell to ensure that Tramp will try to open a
+                  ;; connection to the remote host. Otherwise the
+                  ;; process will be launched on the localhost. This
+                  ;; is need because some completion framework (e.g
+                  ;; company) set `non-essential' to a non-nil value
+                  ;; when the completion hasn't not been requested by
+                  ;; the user
+                  (setq process (apply start-proc-fun args))))
               (set-process-query-on-exit-flag process nil)
               (let ((shell-name (file-name-nondirectory bash-completion-prog)))
                 (dolist (start-file bash-completion-start-files)
@@ -1030,9 +1042,11 @@ is set to t."
               (bash-completion-send "function quote_readline { echo \"$1\"; }" process)
               (bash-completion-send "complete -p" process)
               (bash-completion-build-alist (process-buffer process))
-              (push (cons remote process) bash-completion-processes)
-              (setq cleanup nil)
-              process)
+              (let ((entry (cons process bash-completion-alist)))
+                (push (cons remote entry)
+                      bash-completion-processes)
+                (setq cleanup nil)
+                entry))
           ;; finally
           (progn
             (setenv "EMACS_BASH_COMPLETE" nil)
@@ -1183,7 +1197,7 @@ and would like bash completion in Emacs to take these changes into account."
   (interactive)
   (let* ((remote (file-remote-p default-directory))
          (entry (assoc remote bash-completion-processes))
-         (proc (cdr entry)))
+         (proc (cadr entry)))
     (when proc
       (bash-completion-kill proc))))
 
@@ -1198,13 +1212,13 @@ and would like bash completion in Emacs to take these changes into account."
 
 (defun bash-completion-buffer ()
   "Return the buffer of the BASH process, create the BASH process if necessary."
-  (process-buffer (bash-completion-require-process)))
+  (process-buffer (car (bash-completion-require-process))))
 
 (defun bash-completion-is-running ()
   "Check whether the bash completion process is running."
   (let* ((entry (assoc (file-remote-p default-directory)
                        bash-completion-processes))
-         (proc (cdr entry))
+         (proc (cadr entry))
          (running (and proc (eq 'run (process-status proc)))))
     (unless (and entry running)
       (setq bash-completion-processes (delq entry bash-completion-processes)))
@@ -1226,7 +1240,7 @@ of the command in the bash completion process buffer.
 
 Return the status code of the command, as a number."
   ;; (message commandline)
-  (let ((process (or process (bash-completion-require-process)))
+  (let ((process (or process (car (bash-completion-require-process))))
 	(timeout (or timeout bash-completion-process-timeout)))
     (with-current-buffer (process-buffer process)
       (erase-buffer)
