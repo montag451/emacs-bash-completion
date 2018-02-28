@@ -729,7 +729,7 @@ The result is a list of candidates, which might be empty."
       (bash-completion-build-alist (process-buffer process))
       (setcdr entry bash-completion-alist)
       (setq cmdline (bash-completion-generate-line line pos words cword nil))
-      (setq completion-status (bash-completion-send (cdr cmdline)) process))
+      (setq completion-status (bash-completion-send (cdr cmdline) process)))
     (setq candidates
           (when (eq 0 completion-status)
             (bash-completion-extract-candidates
