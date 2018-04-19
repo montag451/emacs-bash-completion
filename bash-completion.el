@@ -820,8 +820,8 @@ for directory name detection to work."
 
      ;; unexpand the home directory expanded by bash automatically
      ((and (bash-completion-starts-with parsed-prefix "~")
-           (bash-completion-starts-with str (expand-file-name "~")))
-      (setq rest (substring (concat "~" (substring str (length (expand-file-name "~"))))
+           (bash-completion-starts-with str (bash-completion--expand-file-name "~" t)))
+      (setq rest (substring (concat "~" (substring str (length (bash-completion--expand-file-name "~" t))))
                             (length parsed-prefix))))
 
      ((bash-completion-starts-with parsed-prefix str)
@@ -857,9 +857,8 @@ for directory name detection to work."
        ((and
          (memq completion-type '(command default wordbreak custom))
          (file-accessible-directory-p
-          (expand-file-name (bash-completion-unescape
-                             open-quote (concat parsed-prefix rest))
-                            default-directory)))
+          (bash-completion--expand-file-name (bash-completion-unescape
+                                              open-quote (concat parsed-prefix rest)))))
         (setq suffix "/"))
        ((or (eq completion-type 'command)
             (and (memq completion-type '(default wordbreak custom))
@@ -1022,7 +1021,7 @@ is set to t."
               (set-process-query-on-exit-flag process nil)
               (let ((shell-name (file-name-nondirectory bash-completion-prog)))
                 (dolist (start-file bash-completion-start-files)
-                  (when (file-exists-p start-file)
+                  (when (file-exists-p (bash-completion--expand-file-name start-file))
                     (process-send-string process (concat ". " start-file "\n")))))
               (bash-completion-send "PROMPT_COMMAND='';PS1='\t$?\v'" process bash-completion-initial-timeout)
               (bash-completion-send (concat "function __bash_complete_wrapper {"
@@ -1070,7 +1069,7 @@ Return a bash command-line for going to default-directory or \"\"."
                  default-directory)))
     (if dir
         (concat "cd >/dev/null 2>&1 "
-                (bash-completion-quote (expand-file-name dir))
+                (bash-completion-quote (bash-completion--expand-file-name dir t))
                 " ; ")
       "")))
 
@@ -1301,6 +1300,17 @@ be called from outside bash-completion.
  'bash-completion-dynamic-try-wordbreak-complete
  'bash-completion--try-wordbreak-complete
  "2.1")
+
+(defun bash-completion--expand-file-name (name &optional local-part-only)
+  (let* ((remote (file-remote-p default-directory))
+         (expanded (if (and remote
+                            (not (file-remote-p name))
+                            (file-name-absolute-p name))
+                       (expand-file-name (concat remote name))
+                     (expand-file-name name))))
+    (if (and remote local-part-only)
+        (file-remote-p expanded 'localname)
+      expanded)))
 
 (provide 'bash-completion)
 ;;; bash-completion.el ends here
