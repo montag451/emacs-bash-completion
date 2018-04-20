@@ -1025,7 +1025,7 @@ is set to t."
             (progn
               (setenv "EMACS_BASH_COMPLETE" "t")
               (setenv "TERM" "dumb")
-              (let* ((start-proc-fun (if remote 'start-file-process 'start-process))
+              (let* ((start-proc-fun (if remote #'start-file-process #'start-process))
                      (buffer-name (generate-new-buffer-name " bash-completion"))
                      (args `("*bash-completion*"
                              ,buffer-name
@@ -1041,8 +1041,8 @@ is set to t."
                   ;; process will be launched on the localhost. This
                   ;; is need because some completion framework (e.g
                   ;; company) set `non-essential' to a non-nil value
-                  ;; when the completion hasn't not been requested by
-                  ;; the user
+                  ;; when the completion has not been requested by the
+                  ;; user
                   (setq process (apply start-proc-fun args))))
               (set-process-query-on-exit-flag process nil)
               (dolist (start-file bash-completion-start-files)
