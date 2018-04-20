@@ -1045,10 +1045,9 @@ is set to t."
                   ;; the user
                   (setq process (apply start-proc-fun args))))
               (set-process-query-on-exit-flag process nil)
-              (let ((shell-name (file-name-nondirectory bash-completion-prog)))
-                (dolist (start-file bash-completion-start-files)
-                  (when (file-exists-p (bash-completion--expand-file-name start-file))
-                    (process-send-string process (concat ". " start-file "\n")))))
+              (dolist (start-file bash-completion-start-files)
+                (when (file-exists-p (bash-completion--expand-file-name start-file))
+                  (process-send-string process (concat ". " start-file "\n"))))
               (bash-completion-send "PROMPT_COMMAND='';PS1='\t$?\v'" process bash-completion-initial-timeout)
               (bash-completion-send (concat "function __bash_complete_wrapper {"
                                             " eval $__BASH_COMPLETE_WRAPPER;"
@@ -1083,7 +1082,7 @@ is set to t."
             (setenv "EMACS_BASH_COMPLETE" nil)
             (setenv "TERM" oldterm)
             (when cleanup
-              (condition-case err
+              (condition-case nil
                   (bash-completion-kill process)
                 (error nil)))))))))
 
@@ -1091,7 +1090,7 @@ is set to t."
   "Build a command-line that CD to default-directory.
 
 Return a bash command-line for going to default-directory or \"\"."
-  (let ((dir (or (file-remote-p default-directory 'localname)
+  (let ((dir (or (file-remote-p (or default-directory "") 'localname)
                  default-directory)))
     (if dir
         (concat "cd >/dev/null 2>&1 "
@@ -1226,11 +1225,19 @@ default-directory of the buffer where the command is executed.
 Call this method if you have updated your .bashrc or any bash init scripts
 and would like bash completion in Emacs to take these changes into account."
   (interactive)
-  (let* ((remote (file-remote-p default-directory))
+  (let* ((remote (and default-directory (file-remote-p default-directory)))
          (entry (assoc remote bash-completion-processes))
          (proc (cadr entry)))
     (when proc
-      (bash-completion-kill proc))))
+      (bash-completion-kill proc)
+      (setq bash-completion-processes (delq entry bash-completion-processes)))))
+
+(defun bash-completion-reset-all ()
+  (interactive)
+  (mapcar (lambda (entry)
+            (let ((default-directory (car entry)))
+              (bash-completion-reset)))
+          bash-completion-processes))
 
 (defun bash-completion-kill (process)
   "Kill PROCESS and its buffer."
