@@ -312,6 +312,7 @@ before it is needed. For an autoload version, add:
   (add-hook 'shell-dynamic-complete-functions
 	    'bash-completion-dynamic-complete))
 
+;;;###autoload
 (defun bash-completion-dynamic-complete ()
     "Return the completion table for bash command at point.
 
