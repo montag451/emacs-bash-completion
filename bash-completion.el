@@ -202,6 +202,19 @@ to remove the extra space bash adds after a completion."
   :type 'boolean
   :group 'bash-completion)
 
+(defcustom bash-completion-enable-caching nil
+  "If non-nil, enable caching in `bash-completion-dynamic-complete-nocomint'.
+
+When caching is enabled,
+`bash-completion-dynamic-complete-nocomint' returns a function
+instead of the list of all possible completions. Enabling caching
+improves performance because less calls will be made to
+`bash-completion-comm' which is an expensive function but it has
+one downside: wordbreak completion will not be attempted when a
+compspec returns no matches."
+  :type 'boolean
+  :group 'bash-completion)
+
 (defvar bash-completion-start-files
   '("~/.emacs_bash.sh" "~/.emacs.d/init_bash.sh")
   "Shell files that, if they exist, will be sourced at the
@@ -299,19 +312,7 @@ before it is needed. For an autoload version, add:
   (add-hook 'shell-dynamic-complete-functions
 	    'bash-completion-dynamic-complete))
 
-;;;###autoload
 (defun bash-completion-dynamic-complete ()
-  (bash-completion--dynamic-complete #'bash-completion-dynamic-complete-nocomint))
-
-;;;###autoload
-(defun bash-completion-dynamic-complete-fast ()
-  "Faster version of `bash-completion-dynamic-complete'.
-
-Use caching to improve performance but don't attempt wordbreak
-completion when no matches is returned by a compspec."
-  (bash-completion--dynamic-complete #'bash-completion--dynamic-complete-nocomint))
-
-(defun bash-completion--dynamic-complete (comp-fun)
     "Return the completion table for bash command at point.
 
 This function is meant to be added into
@@ -328,7 +329,7 @@ When doing completion outside of a comint buffer, call
                 bash-completion-message-delay nil
                 (lambda () (message "Bash completion..."))))))
       (unwind-protect
-          (let ((result (funcall comp-fun
+          (let ((result (bash-completion-dynamic-complete-nocomint
                          (comint-line-beginning-position)
                          (point))))
             (if bash-completion-comint-uses-standard-completion
@@ -350,27 +351,6 @@ When doing completion outside of a comint buffer, call
 
 ;;;###autoload
 (defun bash-completion-dynamic-complete-nocomint (comp-start comp-pos)
-  (let* ((res (bash-completion--dynamic-complete-nocomint comp-start comp-pos))
-         (stub-start (nth 0 res))
-         (stub-end (nth 1 res))
-         (table (nth 2 res)))
-    (when table
-      (let ((completions (all-completions
-                          (buffer-substring stub-start stub-end)
-                          table)))
-        (if completions
-            (list stub-start stub-end completions)
-          (let* ((tokens (bash-completion-tokenize comp-start comp-pos))
-                 (open-quote (bash-completion-tokenize-open-quote tokens))
-                 (parsed (bash-completion-process-tokens tokens comp-pos open-quote))
-                 (cword (cdr (assq 'cword parsed)))
-                 (words (cdr (assq 'words parsed)))
-                 (stub-start (cdr (assq 'stub-start parsed)))
-                 (stub (nth cword words)))
-            (bash-completion--try-wordbreak-complete
-             stub stub-start comp-pos open-quote)))))))
-
-(defun bash-completion--dynamic-complete-nocomint (comp-start comp-pos)
   "Return completion information for bash command at an arbitrary position.
 
 The bash command to be completed begins at COMP-START in the
@@ -383,7 +363,8 @@ It is meant to be called directly from any completion engine.
 Returns (list stub-start stub-end completions) with
  - stub-start, the position at which the completed region starts
  - stub-end, the position at which the completed region ends
- - completions, a possibly empty list of completion candidates"
+ - completions, a possibly empty list of completion candidates or a function if
+   `bash-completion-enable-caching' is non-nil"
   (when bash-completion-enabled
     (let* ((tokens (bash-completion-tokenize comp-start comp-pos))
 	   (open-quote (bash-completion-tokenize-open-quote tokens))
@@ -393,12 +374,22 @@ Returns (list stub-start stub-end completions) with
 	   (cword (cdr (assq 'cword parsed)))
 	   (words (cdr (assq 'words parsed)))
 	   (stub-start (cdr (assq 'stub-start parsed)))
-           (unparsed-stub (buffer-substring-no-properties stub-start comp-pos))
-	   (completions (completion-table-with-cache
-                         (lambda (_)
-                           (bash-completion-comm line point words cword open-quote
-                                                 unparsed-stub)))))
-      (list stub-start comp-pos completions))))
+           (stub (nth cword words))
+           (unparsed-stub (buffer-substring-no-properties stub-start comp-pos)))
+      (if bash-completion-enable-caching
+          (list
+           stub-start
+           comp-pos
+           (completion-table-with-cache
+            (lambda (_)
+              (bash-completion-comm line point words cword open-quote
+                                    unparsed-stub))))
+        (let ((completions (bash-completion-comm line point words cword open-quote
+                                                 unparsed-stub)))
+          (if completions
+              (list stub-start comp-pos completions)
+            (bash-completion--try-wordbreak-complete
+             stub stub-start comp-pos open-quote)))))))
 
 (defun bash-completion--try-wordbreak-complete
     (parsed-stub stub-start pos open-quote)
